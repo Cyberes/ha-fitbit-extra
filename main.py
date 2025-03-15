@@ -172,19 +172,9 @@ def main(args):
         topic_name = f'{args.person_name}-{topic_name}'
 
     while True:
-        latest_timestamp_redis: bytes = redis.get('fitbit_latest_timestamp')
-        latest_timestamp = None
-        if latest_timestamp_redis:
-            latest_timestamp = pickle.loads(latest_timestamp_redis)
-
         timestamp, hr_value = do_fetch()
-        redis.set('fitbit_latest_timestamp', pickle.dumps(timestamp))
-
-        if latest_timestamp is None or latest_timestamp < timestamp:
-            logging.info(f'Latest data is {hr_value} BPM at {timestamp}')
-
+        logging.info(f'Latest data is {hr_value} BPM at {timestamp}')
         publish(topic_name, hr_value)
-
         logging.info(f'Sleeping {SLEEP_MINUTES} minutes...')
         time.sleep(SLEEP_MINUTES * 60)
 
