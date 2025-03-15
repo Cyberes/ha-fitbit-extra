@@ -183,6 +183,7 @@ def main(args):
         if latest_timestamp is None or latest_timestamp < timestamp:
             publish(topic_name, hr_value)
 
+        logging.info(f'Sleeping {SLEEP_MINUTES} minutes...')
         time.sleep(SLEEP_MINUTES * 1000)
 
 
