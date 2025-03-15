@@ -3,7 +3,6 @@ import json
 import logging
 import math
 import os
-import pickle
 import sys
 import time
 import traceback
@@ -132,18 +131,8 @@ def publish(topic: str, msg: str, attributes: dict = None):
 
 def do_fetch():
     access_token = get_valid_access_token()
-
-    end_datetime_redis: bytes = redis.get('fitbit_end_datetime')
-    now = datetime.now()
-    if not end_datetime_redis:
-        end_datetime = now
-    else:
-        end_datetime = pickle.loads(end_datetime_redis)
-    redis.set('fitbit_end_datetime', pickle.dumps(now))
-
+    end_datetime = datetime.now()
     start_datetime = end_datetime - timedelta(hours=23)
-
-    logging.info(f"Fetching heart rate data from {start_datetime} to {end_datetime}...")
 
     try:
         data = fetch_heart_rate_data(access_token, start_datetime, end_datetime)
