@@ -186,7 +186,7 @@ def main(args):
             publish(topic_name, hr_value)
 
         logging.info(f'Sleeping {SLEEP_MINUTES} minutes...')
-        time.sleep(SLEEP_MINUTES * 1000)
+        time.sleep(SLEEP_MINUTES * 60)
 
 
 if __name__ == '__main__':
