@@ -1,0 +1,16 @@
+[Unit]
+Description=Fitbit Extra
+After=network.target
+
+[Service]
+Type=simple
+User=homeassistant
+WorkingDirectory=/srv/ha-fitbit-extra
+EnvironmentFile=/etc/secrets/fitbit-extra
+ExecStart=/srv/ha-fitbit-extra/venv/bin/python /srv/ha-fitbit-extra/main.py
+SyslogIdentifier=fitbit-extra
+Restart=always
+RestartSec=60s
+
+[Install]
+WantedBy=multi-user.target
