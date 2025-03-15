@@ -9,7 +9,9 @@ It runs on an external server (not on Home Assistant as an integration) since yo
 
 **Added Sensors:**
 
-- Heart Rate (BPM)
+Heart Rate (BPM). Unfortunately, there is no way to backfill historical data due to HA's timeseries architecture. This
+sensor is dependent on how often your Fitbit app syncs. The Fitbit API can return data in 1 second intervals but data
+may not be synced by the app for long periods of time. There isn't an easy solution for this.
 
 ## Install
 
