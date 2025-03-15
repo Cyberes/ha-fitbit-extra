@@ -7,11 +7,14 @@ quick-and-dirty service to send that missing data to Home Assistant.
 
 It runs on an external server (not on Home Assistant as an integration) since you have to fiddle with OAuth2 callbacks.
 
+Unfortunately, there is no way to backfill historical data due to HA's timeseries architecture. This
+sensor is dependent on how often your Fitbit app syncs. The Fitbit API can return data in 1 second intervals but data
+may not be synced by the app for long periods of time. There isn't an easy solution for this. You may want to allow the
+app to run unrestricted in background.
+
 **Added Sensors:**
 
-Heart Rate (BPM). Unfortunately, there is no way to backfill historical data due to HA's timeseries architecture. This
-sensor is dependent on how often your Fitbit app syncs. The Fitbit API can return data in 1 second intervals but data
-may not be synced by the app for long periods of time. There isn't an easy solution for this.
+- Heart Rate (BPM).
 
 ## Install
 
