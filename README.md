@@ -12,6 +12,9 @@ sensor is dependent on how often your Fitbit app syncs. The Fitbit API can retur
 may not be synced by the app for long periods of time. There isn't an easy solution for this. You may want to allow the
 app to run unrestricted in background.
 
+The app seems to sync at least every 30 minutes. Although it isn't real-time, letting Fitbit handle syncing is more
+battery efficient than making the HA WearOS app sync often.
+
 **Added Sensors:**
 
 - Heart Rate (BPM).
