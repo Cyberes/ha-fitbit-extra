@@ -18,7 +18,7 @@ from lib.consts import REDIS_DB, REDIS_TOKEN_KEY
 
 TOKEN_URL = "https://api.fitbit.com/oauth2/token"
 HEART_RATE_API_URL = "https://api.fitbit.com/1/user/-/activities/heart/date/{start_date}/{end_date}/1min/time/{start_time}/{end_time}.json"
-SLEEP_MINUTES = math.floor(150 / 60)
+SLEEP_MINUTES = math.ceil(150 / 60)  # Fitbit allows 150 calls per hour.
 
 redis = Redis(db=REDIS_DB)
 logging.basicConfig(level=logging.INFO)
