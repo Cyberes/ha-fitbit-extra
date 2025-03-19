@@ -25,13 +25,16 @@ battery efficient than making the HA WearOS app sync often.
 2. Do `pip install -r requirements.txt` on both venvs.
 3. Set up a Fitbit developer account according to these
    instructions: <https://www.home-assistant.io/integrations/fitbit/>
-4. On your local desktop machine, run `./authorize.py <client_id>` where `<client_id>` is your OAuth 2.0 Client ID
-   from <https://dev.fitbit.com/apps>. Complete the authorization in your browser.
-5. Copy the output JSON.
-6. On your server, run `./import-auth.py` and paste your JSON.
-7. Add and enable the `fitbit-extra.service` (make sure to enter your environment variables in
+4. Set the `Redirect URL` to `https://localhost:5000/callback`
+5. On your local desktop machine, run `./authorize.py <client_id>` where `<client_id>` is your OAuth 2.0 Client ID
+   from <https://dev.fitbit.com/apps>. Complete the authorization in your browser. If nothing happens after clicking the
+   `Allow` button, check the request console for a GET to `https://localhost:5000/callback?code=` and open that URL in a
+   new tab to complete the request.
+6. Copy the output JSON.
+7. On your server, run `./import-auth.py` and paste your JSON.
+8. Add and enable the `fitbit-extra.service` (make sure to enter your environment variables in
    `/etc/secrets/fitbit-extra`).
-8. Add this to your Home Assistant MQTT config:
+9. Add this to your Home Assistant MQTT config:
    ```yaml
    - name: "Fitbit Heart Rate"
      state_topic: "fitbit-extra/fitbit-extra-heart-rate"

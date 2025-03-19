@@ -37,6 +37,9 @@ client.connect(MQTT_BROKER_HOST, port=MQTT_BROKER_PORT)
 client.loop_start()
 
 
+# TODO: more logging, make this a systemd timer for every 5 minutes if there are memory leak issues
+
+
 def get_tokens():
     token_data = redis.hgetall(REDIS_TOKEN_KEY)
     if not token_data:
@@ -53,18 +56,17 @@ def refresh_access_token(refresh_token):
         "refresh_token": refresh_token,
         "client_id": tokens.get('client_id'),
     }
-
     headers = {
         "Content-Type": "application/x-www-form-urlencoded",
     }
 
     response = requests.post(TOKEN_URL, data=data, headers=headers)
     if response.status_code != 200:
-        print(f"Failed to refresh access token: {response.status_code} {response.text}")
+        logging.critical(f"Failed to refresh access token: {response.status_code} {response.text}")
         exit(1)
 
     token_data = response.json()
-    print("Access token refreshed successfully.")
+    logging.info("Access token refreshed successfully.")
 
     # Calculate new expiry time
     expires_in = token_data.get("expires_in")  # in seconds
@@ -79,7 +81,6 @@ def refresh_access_token(refresh_token):
         "token_type": token_data.get("token_type"),
         "user_id": token_data.get("user_id"),
     }
-
     redis.hset(REDIS_TOKEN_KEY, mapping=updated_tokens)
     return updated_tokens
 
@@ -88,7 +89,7 @@ def get_valid_access_token():
     tokens = get_tokens()
     current_time = int(datetime.now().timestamp())
     if int(tokens["expires_at"]) <= current_time:
-        print("Access token expired. Refreshing...")
+        logging.info("Access token expired. Refreshing...")
         tokens = refresh_access_token(tokens["refresh_token"])
     return tokens["access_token"]
 
