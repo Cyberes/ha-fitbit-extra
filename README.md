@@ -29,7 +29,7 @@ battery efficient than making the HA WearOS app sync often.
 5. On your local desktop machine, run `./authorize.py <client_id>` where `<client_id>` is your OAuth 2.0 Client ID
    from <https://dev.fitbit.com/apps>. Complete the authorization in your browser. If nothing happens after clicking the
    `Allow` button, check the request console for a GET to `https://localhost:5000/callback?code=` and open that URL in a
-   new tab to complete the request.
+   new tab to complete the request (this may happen due to browsers not trusting self-signed SSL certs completely).
 6. Copy the output JSON.
 7. On your server, run `./import-auth.py` and paste your JSON.
 8. Add and enable the `fitbit-extra.service` (make sure to enter your environment variables in
