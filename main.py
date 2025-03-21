@@ -20,7 +20,7 @@ MQTT_USERNAME = os.getenv('MQTT_USERNAME', '')
 MQTT_PASSWORD = os.getenv('MQTT_PASSWORD', '')
 MQTT_TOPIC_PREFIX = os.getenv('MQTT_TOPIC_PREFIX', 'fitbit-extra')
 
-HEART_RATE_API_URI = 'https://api.fitbit.com/1/user/-/activities/heart/date/{start_date}/{end_date}/{detail_level}/time/{start_time}/{end_time}.json'
+HEART_RATE_API_URI = 'https://api.fitbit.com/1/user/-/activities/heart/date/{start_date}/{end_date}/1min/time/{start_time}/{end_time}.json'
 
 # Fitbit allows 150 calls per hour.
 SLEEP_MINUTES = math.ceil(150 / 60)
@@ -50,7 +50,7 @@ def get_oauth_session():
     return session
 
 
-def fetch_heart_rate_data(oauth_session, start_datetime, end_datetime, detail_level):
+def fetch_heart_rate_data(oauth_session, start_datetime, end_datetime):
     start_date = start_datetime.strftime('%Y-%m-%d')
     end_date = end_datetime.strftime('%Y-%m-%d')
     start_time = start_datetime.strftime('%H:%M')
@@ -59,7 +59,6 @@ def fetch_heart_rate_data(oauth_session, start_datetime, end_datetime, detail_le
     url = HEART_RATE_API_URI.format(
         start_date=start_date,
         end_date=end_date,
-        detail_level=detail_level,
         start_time=start_time,
         end_time=end_time,
     )
@@ -95,12 +94,12 @@ def publish(topic: str, msg: str, attributes: dict = None):
     logging.error(f'Failed to send message to topic {topic_expanded}.')
 
 
-def do_fetch(oauth_session, detail_level):
+def do_fetch(oauth_session):
     end_datetime = datetime.now()
     start_datetime = end_datetime - timedelta(hours=23)
 
     try:
-        data = fetch_heart_rate_data(oauth_session, start_datetime, end_datetime, detail_level)
+        data = fetch_heart_rate_data(oauth_session, start_datetime, end_datetime)
     except:
         logging.critical(f'Error fetching heart rate data:\n{traceback.format_exc()}')
         sys.exit(1)
@@ -132,7 +131,7 @@ def main(args):
     last_timestamp = datetime.fromtimestamp(0)
 
     while True:
-        timestamp_str, hr_value = do_fetch(oauth_session, args.detail_level)
+        timestamp_str, hr_value = do_fetch(oauth_session)
         timestamp = datetime.strptime(str(date.today()) + ' ' + timestamp_str, '%Y-%m-%d %H:%M:%S')
         if timestamp > last_timestamp and hr_value is not None:
             logging.info(f'{hr_value} BPM at {timestamp_str}')
@@ -144,6 +143,5 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--person-name', help='Name of this person.')
-    parser.add_argument('--detail-level', choices=['1sec', '1min', '5min', '15min'], default='15min', help='The detail level.')
     args = parser.parse_args()
     main(args)
