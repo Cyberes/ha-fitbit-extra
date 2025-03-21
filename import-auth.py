@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import json
+import pickle
 import sys
 
 import redis
@@ -10,7 +11,7 @@ from lib.consts import REDIS_DB, REDIS_TOKEN_KEY
 
 def import_token_info():
     print("Please paste the token_info JSON:")
-    token_info_json = input()
+    token_info_json = input().strip()
 
     try:
         token_info = json.loads(token_info_json)
@@ -20,7 +21,7 @@ def import_token_info():
 
     # Store tokens in Redis
     r = redis.Redis(db=REDIS_DB)
-    r.hset(REDIS_TOKEN_KEY, mapping=token_info)
+    r.set(REDIS_TOKEN_KEY, pickle.dumps(token_info))
     print(f"Token info imported and stored in Redis under key '{REDIS_TOKEN_KEY}'")
 
 

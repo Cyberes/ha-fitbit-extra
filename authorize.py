@@ -1,68 +1,79 @@
 #!/usr/bin/env python3
-import base64
-import hashlib
 import json
-import os
 import sys
 import threading
 import time
 import webbrowser
+from base64 import urlsafe_b64encode
+from hashlib import sha256
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs, urlencode
+from secrets import token_urlsafe
+from urllib.parse import urlparse, parse_qs
 
-import requests
+from requests_oauthlib import OAuth2Session
 
 import ssl
 
-SCOPES = "activity heartrate nutrition oxygen_saturation respiratory_rate settings sleep temperature weight"
-REDIRECT_URI = "https://localhost:5000/callback"
-AUTHORIZATION_URL = "https://www.fitbit.com/oauth2/authorize"
-TOKEN_URL = "https://api.fitbit.com/oauth2/token"
-SERVER_ADDRESS = ("127.0.0.1", 5000)
+SCOPES = [
+    'activity',
+    'heartrate',
+    'nutrition',
+    'oxygen_saturation',
+    'respiratory_rate',
+    'settings',
+    'sleep',
+    'temperature',
+    'weight',
+]
+REDIRECT_URI = 'https://localhost:5000/callback'
+AUTHORIZATION_BASE_URL = 'https://www.fitbit.com/oauth2/authorize'
+TOKEN_URL = 'https://api.fitbit.com/oauth2/token'
+SERVER_ADDRESS = ('127.0.0.1', 5000)
+
+# Fitbit requires HTTPS callbacks so we just use some dummy certs.
+CERT_FILE = 'ssl/cert.pem'
+KEY_FILE = 'ssl/key.pem'
+
 authorization_code = None
 
-# Fitbit requires callback URLs to be HTTPS so we'll just use some random certs.
-CERT_FILE = "ssl/cert.pem"
-KEY_FILE = "ssl/key.pem"
+
+###############################################################################
+# Local HTTPS Server to handle OAuth Redirects
+###############################################################################
+
+class OAuthCallbackServer(HTTPServer):
+    def __init__(self, server_address, RequestHandlerClass, ssl_context, auth_event):
+        super().__init__(server_address, RequestHandlerClass)
+        self.auth_event = auth_event
+        self.authorization_code = None
+        self.ssl_context = ssl_context
+
+    def serve_forever_tls(self):
+        self.socket = self.ssl_context.wrap_socket(self.socket, server_side=True)
+        self.serve_forever()
 
 
-# ------------------ PKCE Generation ------------------ #
-
-def generate_code_verifier():
-    # Generates a cryptographically secure random string between 43 and 128 characters
-    code_verifier = base64.urlsafe_b64encode(os.urandom(96)).decode('utf-8')
-    return code_verifier.rstrip('=')
-
-
-def generate_code_challenge(code_verifier):
-    # Generates a code challenge based on the code verifier
-    sha256 = hashlib.sha256(code_verifier.encode('utf-8')).digest()
-    code_challenge = base64.urlsafe_b64encode(sha256).decode('utf-8').rstrip('=')
-    return code_challenge
-
-
-# ------------------ HTTP Server with HTTPS ------------------ #
-
-class OAuthHandler(BaseHTTPRequestHandler):
+class OAuthCallbackHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        global authorization_code
-
         parsed_url = urlparse(self.path)
         if parsed_url.path == '/':
+            # Let user know they can proceed
             self.send_response(200)
-            self.send_header("Content-type", "text/html")
+            self.send_header('Content-type', 'text/html')
             self.end_headers()
-            self.wfile.write(b'''
+            message = b'''
                 <html>
-                    <head><title>SSL Certificate Accepted</title></head>
-                    <body>
-                        <h1>SSL Certificate Accepted</h1>
-                        <p>You can now close this window and return to the terminal.</p>
-                    </body>
+                  <head><title>SSL Certificate Accepted</title></head>
+                  <body>
+                    <h1>SSL Certificate Accepted</h1>
+                    <p>You can now close this window and return to the terminal.</p>
+                  </body>
                 </html>
-            ''')
-            self.server.ssl_accepted_event.set()
+            '''
+            self.wfile.write(message)
+            # Notifying the user acceptance was visited; no special event needed here
         elif parsed_url.path == '/callback':
+            # This is where the OAuth authorization code is returned
             query_params = parse_qs(parsed_url.query)
             if 'code' not in query_params:
                 self.send_response(400)
@@ -70,118 +81,132 @@ class OAuthHandler(BaseHTTPRequestHandler):
                 self.wfile.write(b'Authorization code not found.')
                 return
 
+            # Store the authorization code
+            global authorization_code
             authorization_code = query_params['code'][0]
-            self.server.authorization_event.set()
+            self.server.auth_event.set()  # Signal that we have a code
 
             self.send_response(200)
-            self.send_header("Content-type", "text/html")
+            self.send_header('Content-type', 'text/html')
             self.end_headers()
-            self.wfile.write(b'''
+            success = b'''
                 <html>
-                    <head><title>Authorization Successful</title></head>
-                    <body>
-                        <h1>Authorization Successful</h1>
-                        <p>You can close this window.</p>
-                    </body>
+                  <head><title>Authorization Successful</title></head>
+                  <body>
+                    <h1>Authorization Successful</h1>
+                    <p>You can close this window.</p>
+                  </body>
                 </html>
-            ''')
+            '''
+            self.wfile.write(success)
         else:
             self.send_response(404)
             self.end_headers()
             self.wfile.write(b'Not Found')
 
 
-def get_ssl_context(certfile, keyfile):
+def get_ssl_context(cert_file, key_file):
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.load_cert_chain(certfile, keyfile)
-    context.set_ciphers("@SECLEVEL=1:ALL")
+    context.load_cert_chain(cert_file, key_file)
+    context.set_ciphers('@SECLEVEL=1:ALL')
     return context
 
 
-def start_server(authorization_event, ssl_accepted_event):
-    httpd = HTTPServer(SERVER_ADDRESS, OAuthHandler)
-    httpd.authorization_code = None
-    httpd.authorization_event = authorization_event
-    httpd.ssl_accepted_event = ssl_accepted_event
-    ssl_context = get_ssl_context(CERT_FILE, KEY_FILE)
-    httpd.socket = ssl_context.wrap_socket(httpd.socket, server_side=True)
-    print(f"Starting HTTPS server at https://{SERVER_ADDRESS[0]}:{SERVER_ADDRESS[1]}")
-    httpd.serve_forever()
+def start_callback_server(ssl_context, auth_event):
+    httpd = OAuthCallbackServer(SERVER_ADDRESS, OAuthCallbackHandler, ssl_context, auth_event)
+    print(f'Starting HTTPS server at https://{SERVER_ADDRESS[0]}:{SERVER_ADDRESS[1]}')
+    httpd.serve_forever_tls()
+    return httpd
 
 
-# ------------------ Main Authorization Flow ------------------ #
+###############################################################################
+# PKCE Utility Functions
+###############################################################################
 
-def authorize(client_id):
+def generate_code_verifier():
+    # Must be 43-128 characters in length
+    # We'll generate 64 for safety
+    return token_urlsafe(64)
+
+
+def generate_code_challenge(code_verifier: str):
+    # Use SHA256 of the verifier, base64-url-encode, strip '='
+    challenge = sha256(code_verifier.encode('utf-8')).digest()
+    return urlsafe_b64encode(challenge).decode('utf-8').rstrip('=')
+
+
+###############################################################################
+# Main Authorization Flow
+###############################################################################
+
+def authorize(client_id: str):
+    """
+    Launches a local HTTPS server and begins PKCE OAuth2 flow via requests-oauthlib.
+    """
     code_verifier = generate_code_verifier()
     code_challenge = generate_code_challenge(code_verifier)
 
-    params = {
-        "client_id": client_id,
-        "response_type": "code",
-        "scope": SCOPES,
-        "redirect_uri": REDIRECT_URI,
-        "code_challenge": code_challenge,
-        "code_challenge_method": "S256",
-    }
+    oauth = OAuth2Session(
+        client_id=client_id,
+        redirect_uri=REDIRECT_URI,
+        scope=SCOPES
+    )
 
-    authorization_url = f"{AUTHORIZATION_URL}?{urlencode(params)}"
-    authorization_event = threading.Event()
-    ssl_accepted_event = threading.Event()
-    server_thread = threading.Thread(target=start_server, args=(authorization_event, ssl_accepted_event))
-    server_thread.daemon = True
+    authorization_url, _ = oauth.authorization_url(
+        AUTHORIZATION_BASE_URL,
+        code_challenge=code_challenge,
+        code_challenge_method='S256',
+    )
+
+    auth_event = threading.Event()
+    ssl_context = get_ssl_context(CERT_FILE, KEY_FILE)
+    server_thread = threading.Thread(
+        target=start_callback_server,
+        args=(ssl_context, auth_event),
+        daemon=True
+    )
     server_thread.start()
 
-    print("Opening the browser to accept the SSL certificate...")
-    webbrowser.open('https://localhost:5000', new=1, autoraise=True)
-    ssl_accepted_event.wait()
-    print("SSL certificate accepted.")
+    print('Opening browser to accept SSL certificate at / ...')
+    webbrowser.open_new_tab(f'https://{SERVER_ADDRESS[0]}:{SERVER_ADDRESS[1]}/')
+    time.sleep(2)
 
-    print("Opening the browser to authorize the application...")
-    webbrowser.open(authorization_url, new=1, autoraise=True)
-    authorization_event.wait()
+    print('Now opening the browser to request Fitbit authorization...')
+    webbrowser.open_new_tab(authorization_url)
 
-    print(f"Authorization code received: {authorization_code}")
-
-    # Exchange authorization code for tokens
-    data = {
-        "client_id": client_id,
-        "grant_type": "authorization_code",
-        "redirect_uri": REDIRECT_URI,
-        "code": authorization_code,
-        "code_verifier": code_verifier,
-    }
-    headers = {
-        "Content-Type": "application/x-www-form-urlencoded",
-    }
-
-    response = requests.post(TOKEN_URL, data=data, headers=headers)
-    if response.status_code != 200:
-        print(f"Failed to obtain tokens: {response.status_code} {response.text}")
+    # Wait until the server signals that authorization code arrived or time out
+    print('Waiting for the authorization code from Fitbit...')
+    auth_event.wait(timeout=300)  # 5-minute timeout, adjust as needed
+    if authorization_code is None:
+        print('No authorization code received. Exiting.')
         sys.exit(1)
 
-    token_data = response.json()
-    print("Access and refresh tokens obtained successfully.")
+    # Exchange for token
+    try:
+        token_dict = oauth.fetch_token(
+            TOKEN_URL,
+            code=authorization_code,
+            code_verifier=code_verifier,
+            include_client_id=True  # Must be set for PKCE if no client_secret
+        )
+    except Exception as e:
+        print(f'Failed to fetch token: {e}')
+        sys.exit(1)
 
-    # Calculate the token expiry time
-    expires_in = token_data.get("expires_in")  # in seconds
-    expires_at = int(time.time()) + expires_in
+    print('Access and refresh tokens obtained successfully.')
 
-    token_info = {
-        "client_id": client_id,
-        "access_token": token_data.get("access_token"),
-        "refresh_token": token_data.get("refresh_token"),
-        "expires_at": expires_at,
-        "scope": token_data.get("scope"),
-        "token_type": token_data.get("token_type"),
-        "user_id": token_data.get("user_id"),
-    }
+    # Calculate approximate expiry
+    expires_at = token_dict.get('expires_at', time.time() + token_dict.get('expires_in', 0))
+    token_dict['expires_at'] = int(expires_at)
 
-    print("\nToken Info (JSON):")
-    print(json.dumps(token_info))
+    print('\nToken Info (JSON):')
+    print(json.dumps(token_dict))
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     if len(sys.argv) != 2:
-        print("Usage:  ./authorize.py <client_id>")
+        print('Usage: ./authorize.py <client_id>')
         sys.exit(1)
-    authorize(sys.argv[1])
+
+    client_id = sys.argv[1]
+    authorize(client_id)
