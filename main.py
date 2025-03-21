@@ -143,6 +143,6 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--person-name', help='Name of this person.')
-    parser.add_argument('--detail-level', choices=['1sec', '1min', '5min', '15min'], default='15min', help='The detail level.')
+    parser.add_argument('--detail-level', choices=['1sec', '1min', '5min'], default='5min', help='The detail level.')
     args = parser.parse_args()
     main(args)
