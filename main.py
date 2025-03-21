@@ -6,7 +6,7 @@ import os
 import sys
 import time
 import traceback
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 
 import paho.mqtt.client as mqtt
 from requests_oauthlib import OAuth2Session
@@ -128,13 +128,14 @@ def main(args):
     if args.person_name:
         topic_name = f'{args.person_name}-{topic_name}'
 
-    # Initialize our OAuth session
     oauth_session = get_oauth_session()
+    last_timestamp = datetime.fromtimestamp(0)
 
     while True:
         timestamp_str, hr_value = do_fetch(oauth_session, args.detail_level)
-        logging.info(f'Latest data: {hr_value} BPM at {timestamp_str}')
-        if hr_value is not None:
+        timestamp = datetime.strptime(str(date.today()) + ' ' + timestamp_str, '%Y-%m-%d %H:%M:%S')
+        if timestamp > last_timestamp and hr_value is not None:
+            logging.info(f'{hr_value} BPM at {timestamp_str}')
             publish(topic_name, str(hr_value))
         logging.info(f'Sleeping {SLEEP_MINUTES} minutes...')
         time.sleep(SLEEP_MINUTES * 60)
@@ -143,6 +144,6 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--person-name', help='Name of this person.')
-    parser.add_argument('--detail-level', choices=['1sec', '1min', '5min'], default='5min', help='The detail level.')
+    parser.add_argument('--detail-level', choices=['1sec', '1min', '5min', '15min'], default='15min', help='The detail level.')
     args = parser.parse_args()
     main(args)
